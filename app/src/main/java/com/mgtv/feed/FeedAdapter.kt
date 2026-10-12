@@ -1,6 +1,5 @@
 package com.mgtv.feed
 
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.TextureView
 import android.view.View
@@ -8,24 +7,27 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.mgtv.feed.session.FeedPlayerSession
+import com.mgtv.feed.player.PlayerPool
 import com.mgtv.feed.ui.FullScreenController
 
+/**
+ * Feed 流适配器，非常薄：
+ * - 只管绑定标题、上报 TextureView 生命周期给 [PlayerPool]；
+ * - 封面显示与否完全由 [PlayerPool.renderedPositions] 决定（首帧渲染出来才揭开）；
+ * - 播放/暂停/全屏都转发出去，自己不碰播放器。
+ */
 class FeedAdapter(
     private val items: List<FeedItem>,
+    private val pool: PlayerPool,
     private val fullScreenController: FullScreenController
 ) : RecyclerView.Adapter<FeedAdapter.VH>() {
 
-    companion object {
-        private const val TAG = "FeedAdapter"
-    }
-
     class VH(view: View) : RecyclerView.ViewHolder(view) {
+        val texture: TextureView = view.findViewById(R.id.texture)
+        val cover: View = view.findViewById(R.id.cover)
         val tvTitle: TextView = view.findViewById(R.id.tvTitle)
-        val smallTexture: TextureView = view.findViewById(R.id.smallTexture)
-        val cover: View = view.findViewById(R.id.coverPlaceholder)
+        val ivPause: ImageView = view.findViewById(R.id.ivPause)
         val btnFull: ImageView = view.findViewById(R.id.btnFullscreen)
-        val tvTip: TextView = view.findViewById(R.id.tvTip)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -35,37 +37,41 @@ class FeedAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = items[position]
-        holder.tvTitle.text = item.title
-        holder.tvTip.text = "item #${item.id}\n点右下角按钮全屏"
+        holder.tvTitle.text = "${position + 1}/${items.size} · ${item.title}"
 
-        // 关键：小窗 TextureView 的 SurfaceTexture 生命周期
-        holder.smallTexture.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+        // 首帧渲染出来之前盖着封面，避免黑屏一闪
+        holder.cover.visibility = if (position in pool.renderedPositions) View.GONE else View.VISIBLE
+        holder.ivPause.visibility = View.GONE
+
+        holder.texture.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(st: android.graphics.SurfaceTexture, w: Int, h: Int) {
-                Log.d(TAG, "small surface available pos=$position")
-                FeedPlayerSession.instance.bindSmallSurfaceIfNeeded(holder.smallTexture)
+                pool.onTextureAvailable(position, holder.texture)
             }
 
             override fun onSurfaceTextureSizeChanged(st: android.graphics.SurfaceTexture, w: Int, h: Int) {}
 
             override fun onSurfaceTextureDestroyed(st: android.graphics.SurfaceTexture): Boolean {
-                // 这个小窗要被回收了：如果它正好是当前在播的，先把内核 surface 摘掉，避免崩
-                val session = FeedPlayerSession.instance
-                if (session.attachedSmallTexture === holder.smallTexture &&
-                    !session.isInFullscreenRender
-                ) {
-                    session.switchSurface(null)
-                }
+                pool.onTextureDestroyed(position, holder.texture)
                 return true
             }
 
             override fun onSurfaceTextureUpdated(st: android.graphics.SurfaceTexture) {}
         }
+        // TextureView 可能早就 available（ViewHolder 复用），listener 不会再回调，这里主动补报
+        if (holder.texture.isAvailable) {
+            pool.onTextureAvailable(position, holder.texture)
+        }
 
+        // 点按：暂停/继续
+        holder.itemView.setOnClickListener {
+            if (position != pool.currentPosition) return@setOnClickListener
+            val playing = pool.toggleCurrent()
+            holder.ivPause.visibility = if (playing) View.GONE else View.VISIBLE
+        }
+
+        // 全屏（仅当前页可点，避免把还没在播的页切上去）
         holder.btnFull.setOnClickListener {
-            // 只有当前正在播的那个 item 才能全屏（避免点错）
-            if (FeedPlayerSession.instance.attachedSmallTexture === holder.smallTexture) {
-                fullScreenController.enter(holder.smallTexture)
-            }
+            if (position == pool.currentPosition) fullScreenController.enter()
         }
     }
 

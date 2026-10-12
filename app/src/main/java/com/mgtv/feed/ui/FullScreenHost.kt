@@ -17,9 +17,9 @@ import android.widget.ImageView
  */
 class FullScreenHost(context: Context) : FrameLayout(context) {
 
+    // 注意：TextureView 不支持 background drawable，黑色背景由外层 FrameLayout 提供
     val textureView: TextureView = TextureView(context).apply {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-        setBackgroundColor(0xFF000000.toInt())
     }
 
     private val backBtn: ImageView = ImageView(context).apply {

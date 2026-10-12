@@ -1,73 +1,65 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
+<!-- Feed 流单个 item：整屏一页。 -->
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginVertical="6dp"
-    android:background="@color/dark_bg">
+    android:layout_height="match_parent"
+    android:background="@color/black">
 
-    <!-- item 顶部信息 -->
-    <TextView
-        android:id="@+id/tvTitle"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:padding="12dp"
-        android:textColor="@color/white"
-        android:textSize="15sp"
-        android:textStyle="bold"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <!-- 小窗播放器容器：内部是一个 TextureView，占 16:9 区域 -->
-    <FrameLayout
-        android:id="@+id/smallPlayerContainer"
+    <!-- 播放器画面：铺满整页 -->
+    <TextureView
+        android:id="@+id/texture"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:background="#FF000000"
-        app:layout_constraintDimensionRatio="16:9"
-        app:layout_constraintTop_toBottomOf="@id/tvTitle">
+        android:layout_height="match_parent" />
 
-        <TextureView
-            android:id="@+id/smallTexture"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+    <!-- 封面占位：首帧渲染出来之前盖着，避免黑屏一闪 -->
+    <View
+        android:id="@+id/cover"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#FF1A1A1A" />
 
-        <!-- 封面占位（切全屏时小窗不可见，但封面保留防止跳动） -->
-        <View
-            android:id="@+id/coverPlaceholder"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="#FF222222" />
-
-        <!-- 全屏按钮 -->
-        <ImageView
-            android:id="@+id/btnFullscreen"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_gravity="end|bottom"
-            android:layout_margin="10dp"
-            android:padding="6dp"
-            android:src="@android:drawable/ic_menu_rotate"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="fullscreen" />
-
-        <!-- 中间播放/暂停指示 -->
-        <TextView
-            android:id="@+id/tvTip"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:textColor="@color/white"
-            android:textSize="13sp"
-            android:padding="8dp"
-            android:background="#88000000" />
-    </FrameLayout>
-
+    <!-- 底部渐变，让标题可读 -->
     <View
         android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="#33FFFFFF"
-        app:layout_constraintTop_toBottomOf="@id/smallPlayerContainer" />
-</androidx.constraintlayout.widget.ConstraintLayout>
+        android:layout_height="180dp"
+        android:layout_gravity="bottom"
+        android:background="#99000000" />
+
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="36dp"
+        android:textColor="@color/white"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <!-- 暂停状态图标：点按暂停时显示，点按继续时隐藏 -->
+    <ImageView
+        android:id="@+id/ivPause"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_gravity="center"
+        android:alpha="0.8"
+        android:src="@android:drawable/ic_media_play"
+        android:visibility="gone"
+        android:contentDescription="paused" />
+
+    <!-- 右上角全屏按钮 -->
+    <ImageView
+        android:id="@+id/btnFullscreen"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="48dp"
+        android:layout_marginEnd="16dp"
+        android:padding="10dp"
+        android:src="@android:drawable/ic_menu_rotate"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="fullscreen" />
+
+</FrameLayout>
