@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.mgtv.feed.databinding.ActivityMainBinding
 import com.mgtv.feed.player.PlayerPool
+import com.mgtv.feed.player.TextureFit
 import com.mgtv.feed.ui.FullScreenController
 
 /**
@@ -43,6 +44,14 @@ class MainActivity : AppCompatActivity() {
         pool.onFirstFrame = { position ->
             runOnUiThread {
                 findVH(position)?.cover?.visibility = android.view.View.GONE
+            }
+        }
+        // 拿到视频原始宽高 → 校正画面，防拉伸变形（完整显示，留黑边）
+        pool.onVideoSize = { position ->
+            runOnUiThread {
+                val vh = findVH(position) ?: return@runOnUiThread
+                val size = pool.videoSizeOf(position) ?: return@runOnUiThread
+                TextureFit.apply(vh.texture, size.first, size.second)
             }
         }
         pool.onPlayError = { position ->

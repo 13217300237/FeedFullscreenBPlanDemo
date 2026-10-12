@@ -8,6 +8,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.mgtv.feed.player.PlayerPool
+import com.mgtv.feed.player.TextureFit
 import com.mgtv.feed.ui.FullScreenController
 
 /**
@@ -43,8 +44,20 @@ class FeedAdapter(
         holder.cover.visibility = if (position in pool.renderedPositions) View.GONE else View.VISIBLE
         holder.ivPause.visibility = View.GONE
 
+        // 复用出来的 View 可能带着上一个视频的变换，先按当前视频尺寸校正；尺寸未知就清掉
+        val size = pool.videoSizeOf(position)
+        if (size != null) {
+            TextureFit.apply(holder.texture, size.first, size.second)
+        } else {
+            holder.texture.setTransform(null)
+        }
+
         holder.texture.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(st: android.graphics.SurfaceTexture, w: Int, h: Int) {
+                // surface 尺寸此时才确定，补一次校正
+                pool.videoSizeOf(position)?.let { (vw, vh) ->
+                    TextureFit.apply(holder.texture, vw, vh)
+                }
                 pool.onTextureAvailable(position, holder.texture)
             }
 

@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import com.mgtv.feed.player.PlayerPool
+import com.mgtv.feed.player.TextureFit
 
 /**
  * 全屏协调器：把当前页的渲染 Surface 从小窗 TextureView 换到全屏 TextureView。
@@ -45,14 +46,26 @@ class FullScreenController(
         h.textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(st: android.graphics.SurfaceTexture, w: Int, hgt: Int) {
                 player.setSurfaceTexture(st)
+                // 全屏 TextureView 是新 View，变换矩阵要重新给（竖屏视频进横屏 → 左右黑边完整显示）
+                TextureFit.apply(h.textureView, player.videoWidth, player.videoHeight)
                 applyLandscapeUi()
             }
 
-            override fun onSurfaceTextureSizeChanged(st: android.graphics.SurfaceTexture, w: Int, hgt: Int) {}
+            override fun onSurfaceTextureSizeChanged(st: android.graphics.SurfaceTexture, w: Int, hgt: Int) {
+                // 横屏旋转后尺寸变了：矩阵是按旧尺寸算的，必须按新尺寸重算
+                h.textureView.post {
+                    TextureFit.apply(h.textureView, player.videoWidth, player.videoHeight)
+                }
+            }
 
             override fun onSurfaceTextureDestroyed(st: android.graphics.SurfaceTexture): Boolean = true
 
             override fun onSurfaceTextureUpdated(st: android.graphics.SurfaceTexture) {}
+        }
+
+        // 旋转导致 view 尺寸变化时，按最新尺寸重算矩阵（双保险，和 onSurfaceTextureSizeChanged 互补）
+        h.textureView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            TextureFit.apply(h.textureView, player.videoWidth, player.videoHeight)
         }
 
         decor.addView(h, ViewGroup.LayoutParams(
@@ -63,6 +76,9 @@ class FullScreenController(
         // addView 后 surface 可能已就绪（没走回调），兜底
         if (h.textureView.isAvailable) {
             player.setSurfaceTexture(h.textureView.surfaceTexture)
+            h.textureView.post {
+                TextureFit.apply(h.textureView, player.videoWidth, player.videoHeight)
+            }
             applyLandscapeUi()
         }
     }

@@ -37,6 +37,14 @@ class PlayerPool(private val items: List<FeedItem>) {
     /** 某页首帧渲染出来（揭封面）。 */
     var onFirstFrame: ((Int) -> Unit)? = null
     var onPlayError: ((Int) -> Unit)? = null
+    /** 某页拿到视频原始宽高（上层拿去校正 TextureView 变换，防拉伸变形）。 */
+    var onVideoSize: ((Int) -> Unit)? = null
+
+    /** 某页的视频原始宽高；还没拿到时返回 null。 */
+    fun videoSizeOf(position: Int): Pair<Int, Int>? {
+        val p = players[position] ?: return null
+        return if (p.videoWidth > 0 && p.videoHeight > 0) p.videoWidth to p.videoHeight else null
+    }
 
     // ---------- 翻页 ----------
 
@@ -131,6 +139,7 @@ class PlayerPool(private val items: List<FeedItem>) {
                     this@PlayerPool.onFirstFrame?.invoke(position)
                 }
                 onError = { this@PlayerPool.onPlayError?.invoke(position) }
+                onVideoSizeChanged = { this@PlayerPool.onVideoSize?.invoke(position) }
                 prepare(items[position].url)
             }
         }
