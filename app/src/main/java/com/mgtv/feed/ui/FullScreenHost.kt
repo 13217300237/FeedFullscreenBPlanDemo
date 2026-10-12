@@ -10,10 +10,12 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.TextureView
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.SeekBar
+import kotlin.math.abs
 
 /**
  * 全屏容器。运行时被 [FullScreenController] add 到 DecorView 上。
@@ -24,7 +26,8 @@ import android.widget.SeekBar
  *
  * 手势（抖音式）：
  * - 单击：显隐"操作组件层"（目前只有进度条），不改变播放状态；
- * - 双击：播放/暂停（全屏下不能是单击暂停）。
+ * - 双击：播放/暂停（全屏下不能是单击暂停）；
+ * - 在画面上左右滑动：调进度（滑多少预览多少，松手才真正 seek）。
  * 另外本 View 是 clickable 的，会吃掉整屏触摸 —— 否则单击会穿透到底下的小窗 item，
  * 变成"单击暂停"。
  */
@@ -46,9 +49,9 @@ class FullScreenHost(context: Context) : FrameLayout(context) {
         visibility = GONE
     }
 
-    /** 进度条：全屏下同样可拖。 */
+    /** 进度条：全屏下同样可拖。max=0 表示时长还没拿到，此时禁止滑动调进度。 */
     val seekBar: SeekBar = SeekBar(context).apply {
-        max = 1000
+        max = 0
         progress = 0
         progressTintList = ColorStateList.valueOf(0xFFFFFFFF.toInt())
         progressBackgroundTintList = ColorStateList.valueOf(0x4DFFFFFF)
@@ -92,6 +95,19 @@ class FullScreenHost(context: Context) : FrameLayout(context) {
     /** 双击：播放/暂停切换。由 [FullScreenController] 接管。 */
     var onDoubleTapTogglePlay: (() -> Unit)? = null
 
+    /** 开始左右滑动调进度。 */
+    var onSeekDragStart: (() -> Unit)? = null
+
+    /** 滑动调进度结束，参数是最终目标毫秒。 */
+    var onSeekDragEnd: ((Int) -> Unit)? = null
+
+    // 左右滑动调进度的状态
+    private var downX = 0f
+    private var downY = 0f
+    private var dragStartProgress = 0
+    private var seekingByDrag = false
+    private val touchSlop: Int by lazy { ViewConfiguration.get(context).scaledTouchSlop }
+
     private val handler = Handler(Looper.getMainLooper())
     private val autoHide = Runnable { hideOverlay() }
 
@@ -122,8 +138,44 @@ class FullScreenHost(context: Context) : FrameLayout(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (detector.onTouchEvent(event)) return true
-        return super.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.x
+                downY = event.y
+                seekingByDrag = false
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                val dx = event.x - downX
+                val dy = event.y - downY
+                // 横向位移超过阈值、且比纵向更明显 → 判定为"滑画面调进度"
+                if (!seekingByDrag && abs(dx) > touchSlop && abs(dx) > abs(dy)) {
+                    // 时长还没拿到就别开始，滑了也算不出目标位置
+                    if (seekBar.max > 0) {
+                        seekingByDrag = true
+                        dragStartProgress = seekBar.progress
+                        onSeekDragStart?.invoke()
+                        showOverlay(0)  // 拖动全程保持显示，别自动隐藏
+                    }
+                }
+                if (seekingByDrag && seekBar.max > 0 && width > 0) {
+                    // 滑过整屏宽度 ≈ 走完整条视频；拖动中只更新预览，松手才 seek
+                    val delta = (dx / width) * seekBar.max
+                    seekBar.progress = (dragStartProgress + delta).toInt()
+                        .coerceIn(0, seekBar.max)
+                }
+            }
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (seekingByDrag) {
+                    seekingByDrag = false
+                    onSeekDragEnd?.invoke(seekBar.progress)
+                }
+            }
+        }
+        // 仍然喂给手势检测器：横滑会被它判成非点击，从而不会误触发单击/双击
+        detector.onTouchEvent(event)
+        return true
     }
 
     fun setLoading(visible: Boolean) {

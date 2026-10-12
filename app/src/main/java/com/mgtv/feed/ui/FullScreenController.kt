@@ -87,6 +87,13 @@ class FullScreenController(
                 h.showOverlay()
             }
         })
+        // 在画面上左右滑动调进度：滑动中只预览（seeking 挡住 ticker 回写），松手才真正 seek
+        h.onSeekDragStart = { seeking = true }
+        h.onSeekDragEnd = { targetMs ->
+            p.seekTo(p.currentPosition, targetMs)
+            seeking = false
+            h.showOverlay()
+        }
         // 先亮等待圈：新 Surface 还没渲染出任何帧之前，不让人对着纯黑干看
         h.setLoading(true)
         // 操作组件层先露一下，3.5s 后自动隐藏；之后单击可随时唤出
