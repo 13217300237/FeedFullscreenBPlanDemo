@@ -9,7 +9,7 @@ import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import android.widget.ProgressBar
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
@@ -40,7 +40,7 @@ class FeedAdapter(
         val tvTitle: TextView = view.findViewById(R.id.tvTitle)
         val ivPause: ImageView = view.findViewById(R.id.ivPause)
         val btnFull: ImageView = view.findViewById(R.id.btnFullscreen)
-        val progressBar: ProgressBar = view.findViewById(R.id.progressBar)
+        val seekBar: SeekBar = view.findViewById(R.id.seekBar)
         val btnLike: ImageView = view.findViewById(R.id.btnLike)
         val tvLikeCount: TextView = view.findViewById(R.id.tvLikeCount)
         val btnComment: ImageView = view.findViewById(R.id.btnComment)
@@ -76,7 +76,22 @@ class FeedAdapter(
         // 首帧渲染出来之前盖着封面，避免黑屏一闪
         holder.cover.visibility = if (position in pool.renderedPositions) View.GONE else View.VISIBLE
         holder.ivPause.visibility = View.GONE
-        holder.progressBar.progress = 0
+        holder.seekBar.max = 1000
+        holder.seekBar.progress = 0
+
+        // 进度条可拖：拖动期间进度不回写（pool.isSeeking），松手才 seek
+        holder.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {}
+
+            override fun onStartTrackingTouch(sb: SeekBar) {
+                pool.setSeeking(position, true)
+            }
+
+            override fun onStopTrackingTouch(sb: SeekBar) {
+                pool.seekTo(position, sb.progress)
+                pool.setSeeking(position, false)
+            }
+        })
 
         // 复用出来的 View 可能带着上一个视频的变换，先按当前视频尺寸校正；尺寸未知就清掉
         val size = pool.videoSizeOf(position)

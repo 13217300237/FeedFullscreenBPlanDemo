@@ -72,7 +72,9 @@ class PlayerPool(private val items: List<FeedItem>) {
         // 上一页暂停（不 release，滑回来能瞬间续播）
         if (prev != position) players[prev]?.pause()
 
-        attachAndPlay(position)
+        // 全屏期间画面归全屏 TextureView 所有，播放状态也由全屏那边掌管，
+        // 这里只维护播放器窗口，绝不去抢 surface 或强拉播放（否则暂停态一进全屏就被播起来）
+        if (!isInFullscreen) attachAndPlay(position)
     }
 
     // ---------- TextureView 生命周期上报 ----------
@@ -81,7 +83,8 @@ class PlayerPool(private val items: List<FeedItem>) {
         Log.d(TAG, "texture available pos=$position")
         textures[position] = tv
         if (position == currentPosition && !isInFullscreen) {
-            attachAndPlay(position)
+            // 按意图还原：暂停着的页不该因为 surface 重建就自己播起来
+            attachRespectingIntent(position)
         }
     }
 
@@ -115,9 +118,23 @@ class PlayerPool(private val items: List<FeedItem>) {
         if (!isInFullscreen) players[currentPosition]?.start()
     }
 
-    /** 退出全屏后把小窗 surface 接回来。 */
+    /** 退出全屏后把小窗 surface 接回来，播放/暂停状态按用户意图还原。 */
     fun reattachCurrentSurface() {
-        if (!isInFullscreen) attachAndPlay(currentPosition)
+        if (!isInFullscreen) attachRespectingIntent(currentPosition)
+    }
+
+    // ---------- 拖动进度条 ----------
+
+    /** 用户是否正在拖这一页的进度条（拖的时候进度不再回写，免得和手指打架）。 */
+    private val seekingPositions = HashSet<Int>()
+
+    fun isSeeking(position: Int): Boolean = position in seekingPositions
+    fun setSeeking(position: Int, seeking: Boolean) {
+        if (seeking) seekingPositions.add(position) else seekingPositions.remove(position)
+    }
+
+    fun seekTo(position: Int, ms: Int) {
+        players[position]?.seekTo(ms)
     }
 
     fun releaseAll() {
@@ -145,12 +162,28 @@ class PlayerPool(private val items: List<FeedItem>) {
         }
     }
 
+    /** 接上渲染目标并强制播放（翻页到这一页时用）。 */
     private fun attachAndPlay(position: Int) {
         val player = players[position] ?: return
-        val tv = textures[position]
-        if (tv != null && tv.isAvailable) {
-            player.setSurfaceTexture(tv.surfaceTexture)
-        }
+        attachSurface(position)
         player.start()
+    }
+
+    /** 接上渲染目标，播放/暂停按用户意图还原（surface 重建、退全屏时用）。 */
+    private fun attachRespectingIntent(position: Int) {
+        val player = players[position] ?: return
+        attachSurface(position)
+        if (player.wantsPlay()) player.start() else player.refreshFrame()
+    }
+
+    /**
+     * 把播放器的渲染目标接到这一页的小窗 TextureView 上。
+     * 全屏期间 surface 归全屏 TextureView 所有，这里绝不能去抢。
+     */
+    private fun attachSurface(position: Int) {
+        if (isInFullscreen) return
+        val player = players[position] ?: return
+        val tv = textures[position] ?: return
+        if (tv.isAvailable) player.setSurfaceTexture(tv.surfaceTexture)
     }
 }

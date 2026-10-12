@@ -36,7 +36,7 @@
         android:orientation="vertical"
         android:gravity="center_horizontal"
         android:layout_marginEnd="10dp"
-        android:layout_marginBottom="96dp"
+        android:layout_marginBottom="150dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toBottomOf="parent">
 
@@ -125,26 +125,30 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
         android:layout_marginEnd="12dp"
-        android:layout_marginBottom="34dp"
+        android:layout_marginBottom="10dp"
         android:textColor="#E6FFFFFF"
         android:textSize="14sp"
         android:maxLines="2"
         android:ellipsize="end"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toStartOf="@id/actionColumn"
-        app:layout_constraintBottom_toBottomOf="parent" />
+        app:layout_constraintBottom_toTopOf="@id/seekBar" />
 
-    <!-- 播放进度条：贴底细条 -->
-    <ProgressBar
-        android:id="@+id/progressBar"
-        style="@android:style/Widget.ProgressBar.Horizontal"
+    <!-- 播放进度：可拖动。抬高到离底 44dp，拇指够得着 -->
+    <SeekBar
+        android:id="@+id/seekBar"
         android:layout_width="0dp"
-        android:layout_height="3dp"
-        android:minHeight="0dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="24dp"
         android:max="1000"
         android:progress="0"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
         android:progressTint="#FFFFFF"
-        android:progressBackgroundTint="#33FFFFFF"
+        android:progressBackgroundTint="#4DFFFFFF"
+        android:thumbTint="#FFFFFF"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />

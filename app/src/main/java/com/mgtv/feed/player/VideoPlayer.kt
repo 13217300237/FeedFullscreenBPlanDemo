@@ -108,6 +108,32 @@ class VideoPlayer(private val tag: String) {
 
     fun isPlaying(): Boolean = mp?.isPlaying == true
 
+    /**
+     * "用户想要播放"的意图状态。
+     * 区分"没在播因为用户暂停了"和"没在播因为还没缓冲好"——
+     * 换 Surface（进/退全屏）时据此还原成暂停还是继续播。
+     */
+    fun wantsPlay(): Boolean = wantPlay
+
+    /** 拖动进度条用。 */
+    @Suppress("DEPRECATION")
+    fun seekTo(ms: Int) {
+        if (state == State.PREPARED) runCatching { mp?.seekTo(ms) }
+    }
+
+    /**
+     * 暂停/缓冲时把当前帧强制渲染到新 Surface 上。
+     * 场景：换新 Surface（如进全屏）时，暂停中的 MediaPlayer 不会自动把当前帧画过去，
+     * 会一直黑屏到恢复播放。seekTo(当前位置) 会触发一次"定位+渲染"，当前帧立刻出现。
+     * 还没 prepare 完（卡住/缓冲中）时没有帧可画，调用是 no-op。
+     */
+    @Suppress("DEPRECATION")
+    fun refreshFrame() {
+        if (state == State.PREPARED && mp?.isPlaying == false) {
+            runCatching { mp?.seekTo(mp?.currentPosition ?: 0) }
+        }
+    }
+
     /** 播放进度查询（给进度条用），未就绪时返回 0。 */
     fun duration(): Int = if (state == State.PREPARED) mp?.duration ?: 0 else 0
     fun position(): Int = if (state == State.PREPARED) runCatching { mp?.currentPosition ?: 0 }.getOrDefault(0) else 0

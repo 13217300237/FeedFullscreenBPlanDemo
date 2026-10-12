@@ -5,6 +5,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.viewpager2.adapter.FragmentStateAdapter
+import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayoutMediator
 import com.mgtv.feed.databinding.ActivityMainBinding
 import com.mgtv.feed.player.PlayerPool
@@ -21,10 +22,22 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
-    /** 当前活动频道的播放池，由 [FeedFragment.onResume] 注册。 */
+    /**
+     * 当前活动频道的播放池，由 [FeedFragment.onResume] 注册。
+     * 全局唯一播放权关口：新频道注册时立刻静音上一个频道，
+     * 保证任何时刻最多只有一路在出声（不依赖 Fragment 生命周期回调顺序）。
+     */
     var activePool: PlayerPool? = null
+        set(value) {
+            if (field === value) return
+            field?.pauseCurrent()
+            field = value
+        }
 
     val fullScreenController by lazy { FullScreenController(this) { activePool } }
+
+    /** 外层频道容器的当前页 —— 判断"谁有播放权"的唯一依据。 */
+    fun isCurrentChannel(channel: Int): Boolean = binding.channelPager.currentItem == channel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,6 +46,14 @@ class MainActivity : AppCompatActivity() {
 
         binding.channelPager.adapter = ChannelAdapter()
         binding.channelPager.offscreenPageLimit = 1
+
+        // 切频道时主动把播放权交给新频道（旧频道由 activePool 的 setter 立刻静音）
+        binding.channelPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                (supportFragmentManager.findFragmentByTag("f$position") as? FeedFragment)
+                    ?.activateIfCurrentChannel()
+            }
+        })
 
         TabLayoutMediator(binding.tabLayout, binding.channelPager) { tab, position ->
             tab.text = FeedData.channels[position]

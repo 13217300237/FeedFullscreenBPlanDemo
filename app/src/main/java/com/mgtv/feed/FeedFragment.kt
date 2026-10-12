@@ -15,10 +15,15 @@ import com.mgtv.feed.player.TextureFit
 /**
  * 单个频道的竖向 Feed 流。
  *
- * 生命周期与 FragmentStateAdapter 的 setMaxLifecycle 对齐：
- * - 成为当前频道 → onResume：注册为活动播放池，开始播放当前页，启动进度 ticker；
- * - 被滑走 → onPause：暂停；onStop：释放本频道的播放器（防止多频道累积解码器）；
- * - 滑回来 → onResume：重建并直接续播当前页（有预加载，秒开）。
+ * 播放权规则：**只有"当前频道"有资格播放**（[MainActivity.isCurrentChannel]）。
+ * 之所以不能只靠 Fragment 生命周期：外层频道 pager 重排（旋转、尺寸变化）时，
+ * 不止一个 fragment 会短暂 RESUMED，各自的"开闸"任务与内层 pager 的 onPageSelected
+ * 都会去拉播放 —— 结果就是多个频道同时出声。所以每个能触发播放的入口都过一遍频道校验。
+ *
+ * 生命周期：
+ * - 成为当前频道 → [activateIfCurrentChannel]：抢播放权 + 播当前页 + 起进度 ticker；
+ * - 被滑走 → onPause：撤销待执行任务、暂停、停 ticker；onStop：释放解码器；
+ * - 滑回来 → 重新激活（有预加载，秒开）。
  */
 class FeedFragment : Fragment(R.layout.fragment_feed) {
 
@@ -39,8 +44,13 @@ class FeedFragment : Fragment(R.layout.fragment_feed) {
         private set
 
     private val handler = Handler(Looper.getMainLooper())
+
+    /** ticker 是否在跑（防止重复 post 出多条链）。 */
+    private var tickerRunning = false
+
     private val progressTick = object : Runnable {
         override fun run() {
+            if (!tickerRunning) return
             updateProgress()
             handler.postDelayed(this, 200)
         }
@@ -48,6 +58,8 @@ class FeedFragment : Fragment(R.layout.fragment_feed) {
 
     private val onPageChange = object : ViewPager2.OnPageChangeCallback() {
         override fun onPageSelected(position: Int) {
+            // 竖滑翻页。注意：本频道不是当前频道时（视图恢复会触发这个回调）不许播放
+            if (!isPlayingChannel()) return
             pool?.onPageSelected(position)
         }
     }
@@ -89,44 +101,86 @@ class FeedFragment : Fragment(R.layout.fragment_feed) {
 
     override fun onResume() {
         super.onResume()
-        // 成为当前频道：注册到 Activity 供全屏用，播放当前页，启动进度条 ticker
-        val p = pool ?: return
-        (activity as? MainActivity)?.activePool = p
-        val pager = binding?.feedPager ?: return
-        pager.post { p.onPageSelected(pager.currentItem) }
-        handler.post(progressTick)
+        activateIfCurrentChannel()
     }
 
     override fun onPause() {
         super.onPause()
+        // 撤销还没执行的"开闸"任务
+        pendingActivate?.let { binding?.feedPager?.removeCallbacks(it) }
+        pendingActivate = null
+        stopTicker()
         pool?.pauseCurrent()
-        handler.removeCallbacks(progressTick)
     }
 
     override fun onStop() {
         super.onStop()
-        // 被滑走（或切后台）：释放本频道解码器，避免多频道累积超过硬件上限
-        pool?.releaseAll()
+        // 被滑走（或切后台）：释放本频道解码器，避免多频道累积超过硬件上限。
+        // 例外：全屏中的频道不能放——全屏 TextureView 的 Surface 还挂在本池播放器上。
+        if (pool?.isInFullscreen != true) pool?.releaseAll()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         binding?.feedPager?.unregisterOnPageChangeCallback(onPageChange)
-        handler.removeCallbacks(progressTick)
+        stopTicker()
         pool?.releaseAll()
         pool = null
         binding = null
+    }
+
+    /** onResume 里 post 出去的"开闸"任务，onPause 时必须撤销，否则会把已停频道又播起来。 */
+    private var pendingActivate: Runnable? = null
+
+    /**
+     * 只有"当前频道"才允许播放。由 [onResume] 和 [MainActivity] 的频道切换回调调用。
+     * 延迟到下一帧执行：这时外层 pager 的 currentItem 已经落定，能准确判断自己是不是当前频道。
+     */
+    fun activateIfCurrentChannel() {
+        val p = pool ?: return
+        val pager = binding?.feedPager ?: return
+        val r = Runnable {
+            if (!isPlayingChannel()) return@Runnable
+            val act = activity as? MainActivity ?: return@Runnable
+            act.activePool = p          // 抢全局播放权（会静音上一个频道）
+            p.onPageSelected(pager.currentItem)
+            startTicker()
+        }
+        pendingActivate = r
+        pager.post(r)
+    }
+
+    /** 本频道是否既处于 RESUMED、又是外层 pager 的当前页。 */
+    private fun isPlayingChannel(): Boolean {
+        val act = activity as? MainActivity ?: return false
+        return isResumed && act.isCurrentChannel(channel)
+    }
+
+    private fun startTicker() {
+        if (tickerRunning) return
+        tickerRunning = true
+        handler.post(progressTick)
+    }
+
+    private fun stopTicker() {
+        tickerRunning = false
+        handler.removeCallbacks(progressTick)
     }
 
     private fun updateProgress() {
         val p = pool ?: return
         val player = p.currentPlayer() ?: return
         val vh = findVH(p.currentPosition) ?: return
-        val dur = player.duration()
-        if (dur > 0) {
-            vh.progressBar.max = dur
-            vh.progressBar.progress = player.position()
+        // 手指正在拖动时不回写，免得和用户打架
+        if (!p.isSeeking(p.currentPosition)) {
+            val dur = player.duration()
+            if (dur > 0) {
+                vh.seekBar.max = dur
+                vh.seekBar.progress = player.position()
+            }
         }
+        // 播放/暂停状态同步到小窗图标（含全屏里双击切换的状态，退全屏后要一致）
+        vh.ivPause.visibility = if (player.wantsPlay()) View.GONE else View.VISIBLE
     }
 
     private fun findVH(position: Int): FeedAdapter.VH? {
