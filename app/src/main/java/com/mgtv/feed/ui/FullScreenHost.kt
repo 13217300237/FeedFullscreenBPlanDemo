@@ -80,6 +80,15 @@ class FullScreenHost(context: Context) : FrameLayout(context) {
         visibility = GONE
     }
 
+    /** 暂停指示：全屏下暂停了也要看得见，不能只靠画面静止。 */
+    private val pauseIndicator: ImageView = ImageView(context).apply {
+        setImageResource(android.R.drawable.ic_media_play)
+        alpha = 0.8f
+        val size = dp(72)
+        layoutParams = LayoutParams(size, size, Gravity.CENTER)
+        visibility = GONE
+    }
+
     /** 双击：播放/暂停切换。由 [FullScreenController] 接管。 */
     var onDoubleTapTogglePlay: (() -> Unit)? = null
 
@@ -106,6 +115,7 @@ class FullScreenHost(context: Context) : FrameLayout(context) {
         isClickable = true
         addView(textureView)
         addView(loadingView)
+        addView(pauseIndicator)
         overlay.addView(seekBar)
         addView(overlay)
         addView(backBtn)
@@ -118,6 +128,11 @@ class FullScreenHost(context: Context) : FrameLayout(context) {
 
     fun setLoading(visible: Boolean) {
         loadingView.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    /** 暂停状态指示（暂停时显示播放图标，提示"点两下继续"）。 */
+    fun setPaused(paused: Boolean) {
+        pauseIndicator.visibility = if (paused) View.VISIBLE else View.GONE
     }
 
     fun setOnBackListener(l: (View) -> Unit) {

@@ -69,8 +69,10 @@ class FullScreenController(
         val h = FullScreenHost(activity)
         host = h
         h.setOnBackListener { exit() }
-        // 双击 = 播放/暂停（全屏下不能是单击暂停）
-        h.onDoubleTapTogglePlay = { p.toggleCurrent() }
+        // 双击 = 播放/暂停（全屏下不能是单击暂停）。图标立刻跟着切，别等 ticker
+        h.onDoubleTapTogglePlay = { h.setPaused(!p.toggleCurrent()) }
+        // 进全屏时同步当前状态：暂停着进来，图标就要在
+        h.setPaused(!player.wantsPlay())
         h.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {}
 
@@ -170,8 +172,10 @@ class FullScreenController(
     private fun updateProgress() {
         val h = host ?: return
         val p = pool ?: return
-        if (seeking) return
         val player = p.currentPlayer() ?: return
+        // 暂停状态同步（含小窗里暂停着进全屏、全屏里双击切换）；拖进度条期间也要跟着
+        h.setPaused(!player.wantsPlay())
+        if (seeking) return
         val dur = player.duration()
         if (dur > 0) {
             h.seekBar.max = dur
