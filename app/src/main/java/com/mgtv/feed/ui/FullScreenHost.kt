@@ -13,8 +13,10 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.SeekBar
+import android.widget.TextView
 import kotlin.math.abs
 
 /**
@@ -38,10 +40,16 @@ class FullScreenHost(context: Context) : FrameLayout(context) {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
     }
 
-    /** 操作组件层：目前只有一个进度条，之后的操作按钮都往这里加。 */
-    private val overlay: FrameLayout = FrameLayout(context).apply {
+    /** 操作组件层：现在有进度条和时间，之后的操作按钮都往这里加。 */
+    private val overlay: LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(12), dp(6), dp(12), dp(6))
         background = ColorDrawable(0x66000000.toInt())
-        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dp(56), Gravity.BOTTOM).apply {
+        layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM
+        ).apply {
             leftMargin = dp(16)
             rightMargin = dp(16)
             bottomMargin = dp(16)
@@ -56,14 +64,21 @@ class FullScreenHost(context: Context) : FrameLayout(context) {
         progressTintList = ColorStateList.valueOf(0xFFFFFFFF.toInt())
         progressBackgroundTintList = ColorStateList.valueOf(0x4DFFFFFF)
         thumbTintList = ColorStateList.valueOf(0xFFFFFFFF.toInt())
-        layoutParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.CENTER_VERTICAL
-        ).apply {
-            leftMargin = dp(8)
-            rightMargin = dp(8)
-        }
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+    }
+
+    /** 时间显示：当前 / 总时长，如 00:12 / 01:30。 */
+    private val timeText: TextView = TextView(context).apply {
+        setTextColor(0xFFFFFFFF.toInt())
+        textSize = 12f
+        gravity = Gravity.END
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
     }
 
     private val backBtn: ImageView = ImageView(context).apply {
@@ -133,6 +148,7 @@ class FullScreenHost(context: Context) : FrameLayout(context) {
         addView(loadingView)
         addView(pauseIndicator)
         overlay.addView(seekBar)
+        overlay.addView(timeText)
         addView(overlay)
         addView(backBtn)
     }
@@ -163,6 +179,8 @@ class FullScreenHost(context: Context) : FrameLayout(context) {
                     val delta = (dx / width) * seekBar.max
                     seekBar.progress = (dragStartProgress + delta).toInt()
                         .coerceIn(0, seekBar.max)
+                    // 时间跟着预览走，用户才知道松手会落在哪
+                    setTime(seekBar.progress, seekBar.max)
                 }
             }
 
@@ -185,6 +203,20 @@ class FullScreenHost(context: Context) : FrameLayout(context) {
     /** 暂停状态指示（暂停时显示播放图标，提示"点两下继续"）。 */
     fun setPaused(paused: Boolean) {
         pauseIndicator.visibility = if (paused) View.VISIBLE else View.GONE
+    }
+
+    /** 更新时间显示：当前进度 / 总时长。 */
+    fun setTime(positionMs: Int, durationMs: Int) {
+        timeText.text = "${formatTime(positionMs)} / ${formatTime(durationMs)}"
+    }
+
+    /** 超过一小时才带上小时位，短视频一般是 分:秒。 */
+    private fun formatTime(ms: Int): String {
+        val total = (ms / 1000).coerceAtLeast(0)
+        val h = total / 3600
+        val m = total % 3600 / 60
+        val s = total % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
     }
 
     fun setOnBackListener(l: (View) -> Unit) {

@@ -73,8 +73,13 @@ class FullScreenController(
         h.onDoubleTapTogglePlay = { h.setPaused(!p.toggleCurrent()) }
         // 进全屏时同步当前状态：暂停着进来，图标就要在
         h.setPaused(!player.wantsPlay())
+        // 时间先摆上，别等 ticker（否则操作层第一帧是空的一行）
+        h.setTime(player.position(), player.duration())
         h.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {}
+            override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {
+                // 手指拖进度条时，时间显示跟着走
+                if (fromUser) h.setTime(progress, sb.max)
+            }
 
             override fun onStartTrackingTouch(sb: SeekBar) {
                 seeking = true
@@ -184,10 +189,13 @@ class FullScreenController(
         h.setPaused(!player.wantsPlay())
         if (seeking) return
         val dur = player.duration()
+        val pos = player.position()
         if (dur > 0) {
             h.seekBar.max = dur
-            h.seekBar.progress = player.position()
+            h.seekBar.progress = pos
         }
+        // 时长未知时按 0 显示，别留着上一条的空字符串
+        h.setTime(pos, if (dur > 0) dur else 0)
     }
 
     private fun applyLandscapeUi() {
