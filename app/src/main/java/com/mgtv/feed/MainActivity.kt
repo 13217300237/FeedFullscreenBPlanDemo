@@ -1,69 +1,42 @@
 package com.mgtv.feed
 
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.RecyclerView
-import androidx.viewpager2.widget.ViewPager2
+import androidx.fragment.app.Fragment
+import androidx.viewpager2.adapter.FragmentStateAdapter
+import com.google.android.material.tabs.TabLayoutMediator
 import com.mgtv.feed.databinding.ActivityMainBinding
 import com.mgtv.feed.player.PlayerPool
-import com.mgtv.feed.player.TextureFit
 import com.mgtv.feed.ui.FullScreenController
 
 /**
- * 短视频 Feed 流入口。
- *
- * 体验目标对齐抖音：
- * - 竖向整屏翻页（ViewPager2 vertical），一屏一条；
- * - **预加载相邻页**：滑过去基本秒开，不等缓冲；
- * - 封面盖到首帧渲染出来才揭开，不闪黑屏；
- * - 点按暂停/继续，右上角横屏全屏（无缝切 Surface，不重新缓冲）。
+ * 多频道短视频入口（抖音式结构）：
+ * - 外层横向 ViewPager2 + TabLayout：关注 / 推荐 / 朋友 / 同城 四个频道；
+ * - 每个频道是一个 [FeedFragment]，内嵌竖向整屏翻页 feed，各持独立播放池；
+ * - FragmentStateAdapter 的 setMaxLifecycle 保证只有当前频道处于 RESUMED，
+ *   [FeedFragment.onResume] 时才播放，互不抢画面。
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var pool: PlayerPool
-    private lateinit var fullScreenController: FullScreenController
 
-    private val onPageChange = object : ViewPager2.OnPageChangeCallback() {
-        override fun onPageSelected(position: Int) {
-            pool.onPageSelected(position)
-        }
-    }
+    /** 当前活动频道的播放池，由 [FeedFragment.onResume] 注册。 */
+    var activePool: PlayerPool? = null
+
+    val fullScreenController by lazy { FullScreenController(this) { activePool } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        pool = PlayerPool(FeedData.items)
-        fullScreenController = FullScreenController(this, pool)
+        binding.channelPager.adapter = ChannelAdapter()
+        binding.channelPager.offscreenPageLimit = 1
 
-        // 首帧渲染出来 → 揭封面
-        pool.onFirstFrame = { position ->
-            runOnUiThread {
-                findVH(position)?.cover?.visibility = android.view.View.GONE
-            }
-        }
-        // 拿到视频原始宽高 → 校正画面，防拉伸变形（完整显示，留黑边）
-        pool.onVideoSize = { position ->
-            runOnUiThread {
-                val vh = findVH(position) ?: return@runOnUiThread
-                val size = pool.videoSizeOf(position) ?: return@runOnUiThread
-                TextureFit.apply(vh.texture, size.first, size.second)
-            }
-        }
-        pool.onPlayError = { position ->
-            runOnUiThread {
-                Toast.makeText(this, "第 ${position + 1} 条播放失败", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        binding.feedPager.adapter = FeedAdapter(FeedData.items, pool, fullScreenController)
-        // 相邻页 View 保活，与播放器池的 p-1/p/p+1 窗口对齐
-        binding.feedPager.offscreenPageLimit = 1
-        binding.feedPager.registerOnPageChangeCallback(onPageChange)
+        TabLayoutMediator(binding.tabLayout, binding.channelPager) { tab, position ->
+            tab.text = FeedData.channels[position]
+        }.attach()
 
         // 全屏时返回键先退全屏，而不是退出 Activity
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -74,30 +47,10 @@ class MainActivity : AppCompatActivity() {
                 isEnabled = true
             }
         })
-
-        // 首屏：等 ViewPager2 首次布局完成、TextureView 就绪后再播
-        binding.feedPager.post { pool.onPageSelected(binding.feedPager.currentItem) }
     }
 
-    private fun findVH(position: Int): FeedAdapter.VH? {
-        val rv = binding.feedPager.getChildAt(0) as? RecyclerView ?: return null
-        return rv.findViewHolderForAdapterPosition(position) as? FeedAdapter.VH
-    }
-
-    override fun onStop() {
-        super.onStop()
-        // 切后台：暂停当前页但保留已 prepare 的播放器，回来继续
-        pool.pauseCurrent()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        pool.resumeCurrent()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        binding.feedPager.unregisterOnPageChangeCallback(onPageChange)
-        pool.releaseAll()
+    private inner class ChannelAdapter : FragmentStateAdapter(this) {
+        override fun getItemCount(): Int = FeedData.channels.size
+        override fun createFragment(position: Int): Fragment = FeedFragment.newInstance(position)
     }
 }

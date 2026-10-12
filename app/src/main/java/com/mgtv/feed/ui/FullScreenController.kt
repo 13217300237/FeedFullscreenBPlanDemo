@@ -15,14 +15,19 @@ import com.mgtv.feed.player.TextureFit
  * 无缝的根因：解码器不重建、不重新 prepare，只对当前 [com.mgtv.feed.player.VideoPlayer]
  * 调一次 setSurface。小窗 TextureView 全程只是 INVISIBLE（不 detach），
  * 它的 SurfaceTexture 不销毁，退全屏立刻接回。
+ *
+ * 横屏用 **Activity 旋转**（requestedOrientation = SENSOR_LANDSCAPE），跟随手机重力翻转。
+ * 注意这会触发系统旋转动画：旋转瞬间画面矩阵是按旧尺寸算的，
+ * 所以 onSurfaceTextureSizeChanged / OnLayoutChange 里都要按新尺寸重算矩阵。
  */
 class FullScreenController(
     private val activity: Activity,
-    private val pool: PlayerPool
+    private val poolProvider: () -> PlayerPool?
 ) {
 
     private val decor: ViewGroup = activity.window.decorView as ViewGroup
     private var host: FullScreenHost? = null
+    private var pool: PlayerPool? = null
 
     var isFullscreen: Boolean = false
         private set
@@ -30,10 +35,12 @@ class FullScreenController(
     /** 进入全屏（只切当前播放页）。 */
     fun enter() {
         if (isFullscreen) return
-        val player = pool.currentPlayer() ?: return
-        val anchor = pool.currentTexture() ?: return
+        val p = poolProvider() ?: return
+        val player = p.currentPlayer() ?: return
+        val anchor = p.currentTexture() ?: return
         isFullscreen = true
-        pool.isInFullscreen = true
+        pool = p
+        p.isInFullscreen = true
 
         // 小窗留原地仅隐藏，Surface 不销毁
         anchor.visibility = View.INVISIBLE
@@ -46,7 +53,7 @@ class FullScreenController(
         h.textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(st: android.graphics.SurfaceTexture, w: Int, hgt: Int) {
                 player.setSurfaceTexture(st)
-                // 全屏 TextureView 是新 View，变换矩阵要重新给（竖屏视频进横屏 → 左右黑边完整显示）
+                // 全屏 TextureView 是新 View，变换矩阵要重新给
                 TextureFit.apply(h.textureView, player.videoWidth, player.videoHeight)
                 applyLandscapeUi()
             }
@@ -86,15 +93,17 @@ class FullScreenController(
     fun exit() {
         if (!isFullscreen) return
         isFullscreen = false
-        pool.isInFullscreen = false
+        val p = pool
+        pool = null
+        p?.isInFullscreen = false
 
         // 渲染目标切回小窗（小窗 Surface 一直没销毁，直接接回）
-        pool.reattachCurrentSurface()
+        p?.reattachCurrentSurface()
 
         host?.let { decor.removeView(it) }
         host = null
 
-        pool.currentTexture()?.visibility = View.VISIBLE
+        p?.currentTexture()?.visibility = View.VISIBLE
         applyPortraitUi()
     }
 

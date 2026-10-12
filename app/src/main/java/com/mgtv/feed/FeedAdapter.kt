@@ -1,34 +1,54 @@
 package com.mgtv.feed
 
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
 import com.mgtv.feed.player.PlayerPool
 import com.mgtv.feed.player.TextureFit
-import com.mgtv.feed.ui.FullScreenController
 
 /**
  * Feed 流适配器，非常薄：
- * - 只管绑定标题、上报 TextureView 生命周期给 [PlayerPool]；
+ * - 只管绑定数据、上报 TextureView 生命周期给 [PlayerPool]；
  * - 封面显示与否完全由 [PlayerPool.renderedPositions] 决定（首帧渲染出来才揭开）；
- * - 播放/暂停/全屏都转发出去，自己不碰播放器。
+ * - 播放/暂停/全屏都转发出去，自己不碰播放器；
+ * - 点赞/收藏是本地状态切换，分享走系统分享面板。
  */
 class FeedAdapter(
     private val items: List<FeedItem>,
     private val pool: PlayerPool,
-    private val fullScreenController: FullScreenController
+    private val onFullscreen: () -> Unit
 ) : RecyclerView.Adapter<FeedAdapter.VH>() {
+
+    /** 本地互动状态（demo 不持久化）。 */
+    private val likedSet = HashSet<Int>()
+    private val collectedSet = HashSet<Int>()
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {
         val texture: TextureView = view.findViewById(R.id.texture)
         val cover: View = view.findViewById(R.id.cover)
+        val tvAuthor: TextView = view.findViewById(R.id.tvAuthor)
         val tvTitle: TextView = view.findViewById(R.id.tvTitle)
         val ivPause: ImageView = view.findViewById(R.id.ivPause)
         val btnFull: ImageView = view.findViewById(R.id.btnFullscreen)
+        val progressBar: ProgressBar = view.findViewById(R.id.progressBar)
+        val btnLike: ImageView = view.findViewById(R.id.btnLike)
+        val tvLikeCount: TextView = view.findViewById(R.id.tvLikeCount)
+        val btnComment: ImageView = view.findViewById(R.id.btnComment)
+        val tvCommentCount: TextView = view.findViewById(R.id.tvCommentCount)
+        val btnCollect: ImageView = view.findViewById(R.id.btnCollect)
+        val tvCollectCount: TextView = view.findViewById(R.id.tvCollectCount)
+        val btnShare: ImageView = view.findViewById(R.id.btnShare)
+        val tvShareCount: TextView = view.findViewById(R.id.tvShareCount)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -36,13 +56,27 @@ class FeedAdapter(
         return VH(v)
     }
 
-    override fun onBindViewHolder(holder: VH, position: Int) {
+    @SuppressLint("SetTextI18n")
+    override fun onBindViewHolder(holder: VH, @SuppressLint("RecyclerView") position: Int) {
         val item = items[position]
-        holder.tvTitle.text = "${position + 1}/${items.size} · ${item.title}"
+        holder.tvAuthor.text = "@创作者${item.id}号"
+        holder.tvTitle.text = item.title
+
+        // 伪互动数：由 id 派生，稳定不随机
+        val likeBase = 800 + (item.id * 733 % 9000).toInt()
+        val commentBase = 60 + (item.id * 97 % 800).toInt()
+        val collectBase = 30 + (item.id * 53 % 2000).toInt()
+        val shareBase = 10 + (item.id * 31 % 500).toInt()
+
+        bindLike(holder, position, likeBase)
+        holder.tvCommentCount.text = fmt(commentBase)
+        bindCollect(holder, position, collectBase)
+        holder.tvShareCount.text = fmt(shareBase)
 
         // 首帧渲染出来之前盖着封面，避免黑屏一闪
         holder.cover.visibility = if (position in pool.renderedPositions) View.GONE else View.VISIBLE
         holder.ivPause.visibility = View.GONE
+        holder.progressBar.progress = 0
 
         // 复用出来的 View 可能带着上一个视频的变换，先按当前视频尺寸校正；尺寸未知就清掉
         val size = pool.videoSizeOf(position)
@@ -84,9 +118,49 @@ class FeedAdapter(
 
         // 全屏（仅当前页可点，避免把还没在播的页切上去）
         holder.btnFull.setOnClickListener {
-            if (position == pool.currentPosition) fullScreenController.enter()
+            if (position == pool.currentPosition) onFullscreen()
+        }
+
+        // 评论：demo 仅提示
+        holder.btnComment.setOnClickListener {
+            Toast.makeText(holder.itemView.context, "评论面板 demo", Toast.LENGTH_SHORT).show()
+        }
+
+        // 分享：走系统分享面板
+        holder.btnShare.setOnClickListener {
+            val ctx = holder.itemView.context
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, "${item.title}\n${item.url}")
+            }
+            ctx.startActivity(Intent.createChooser(intent, "分享视频"))
         }
     }
+
+    private fun bindLike(holder: VH, position: Int, base: Int) {
+        val liked = position in likedSet
+        holder.btnLike.imageTintList =
+            ColorStateList.valueOf(if (liked) Color.parseColor("#FE2C55") else Color.WHITE)
+        holder.tvLikeCount.text = fmt(base + if (liked) 1 else 0)
+        holder.btnLike.setOnClickListener {
+            if (!likedSet.add(position)) likedSet.remove(position)
+            bindLike(holder, position, base)
+        }
+    }
+
+    private fun bindCollect(holder: VH, position: Int, base: Int) {
+        val collected = position in collectedSet
+        holder.btnCollect.imageTintList =
+            ColorStateList.valueOf(if (collected) Color.parseColor("#FFC107") else Color.WHITE)
+        holder.tvCollectCount.text = fmt(base + if (collected) 1 else 0)
+        holder.btnCollect.setOnClickListener {
+            if (!collectedSet.add(position)) collectedSet.remove(position)
+            bindCollect(holder, position, base)
+        }
+    }
+
+    private fun fmt(n: Int): String =
+        if (n >= 10000) "${n / 10000}.${n % 10000 / 1000}w" else n.toString()
 
     override fun getItemCount(): Int = items.size
 }

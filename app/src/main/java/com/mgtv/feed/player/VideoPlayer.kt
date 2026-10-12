@@ -108,6 +108,10 @@ class VideoPlayer(private val tag: String) {
 
     fun isPlaying(): Boolean = mp?.isPlaying == true
 
+    /** 播放进度查询（给进度条用），未就绪时返回 0。 */
+    fun duration(): Int = if (state == State.PREPARED) mp?.duration ?: 0 else 0
+    fun position(): Int = if (state == State.PREPARED) runCatching { mp?.currentPosition ?: 0 }.getOrDefault(0) else 0
+
     fun release() {
         wantPlay = false
         mp?.let { p ->

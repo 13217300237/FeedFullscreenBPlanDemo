@@ -1,17 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/black">
 
-    <!-- Feed 流体：一屏一个 item，竖向翻页。
-         ViewPager2 的 orientation="vertical" 让它变成抖音式上下滑，
-         内部由 RecyclerView + PagerSnapHelper 实现整屏吸附。 -->
+    <!-- 横向频道容器：每个频道是一个独立的竖向 FeedFragment -->
     <androidx.viewpager2.widget.ViewPager2
-        android:id="@+id/feedPager"
+        android:id="@+id/channelPager"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical" />
+        android:layout_height="match_parent" />
 
-    <!-- 全屏容器占位：运行时由 FullScreenController 动态 addView 到 DecorView，
-         这里不放任何东西，仅作说明。 -->
+    <!-- 顶部频道 Tab，悬浮在视频上方（抖音同款样式：白字、短指示条、无背景） -->
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="28dp"
+        android:background="@android:color/transparent"
+        app:tabTextColor="#99FFFFFF"
+        app:tabSelectedTextColor="#FFFFFF"
+        app:tabTextAppearance="@android:style/TextAppearance.DeviceDefault.Medium"
+        app:tabIndicatorColor="#FFFFFF"
+        app:tabIndicatorHeight="3dp"
+        app:tabIndicatorFullWidth="false"
+        app:tabRippleColor="@android:color/transparent"
+        app:tabBackground="@android:color/transparent"
+        app:tabMode="fixed" />
 </FrameLayout>

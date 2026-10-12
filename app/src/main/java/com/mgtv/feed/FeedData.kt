@@ -15,6 +15,16 @@ data class FeedItem(
  */
 object FeedData {
 
+    /** 频道列表（抖音式多频道）。 */
+    val channels = listOf("关注", "推荐", "朋友", "同城")
+
+    /** 每个频道给不同的视频顺序，模拟不同内容池。 */
+    fun itemsForChannel(channel: Int): List<FeedItem> {
+        if (channel <= 0) return items
+        val shift = channel % items.size
+        return items.drop(shift) + items.take(shift)
+    }
+
     val items = listOf(
         FeedItem(
             1, "西瓜 360p — 火山 CDN",
